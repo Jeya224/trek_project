@@ -1,0 +1,64 @@
+//code en lien avec le code arduino emmeteurV1
+
+<template>
+  <div class="p-6">
+    <h1 class="text-2xl font-bold mb-4">Connection BLE with Nicla Sense ME</h1>
+
+    <button @click="connectToBLE"
+            class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
+      Connect Nicla
+    </button>
+
+    <div v-if="connected" class="mt-4">
+      <p><strong>Accéléromètre</strong></p>
+      <p>X: {{ accel.x.toFixed(2) }}</p>
+      <p>Y: {{ accel.y.toFixed(2) }}</p>
+      <p>Z: {{ accel.z.toFixed(2) }}</p>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+
+const connected = ref(false)
+const accel = ref({ x: 0, y: 0, z: 0 })
+
+// UUIDs identiques à ceux définis dans le code Arduino
+const SERVICE_UUID = "12345678-1234-1234-1234-123456781234"
+const CHARACTERISTIC_UUID = "12345679-1234-1234-1234-123456781234"
+
+async function connectToBLE() {
+  try {
+    console.log("Searching for BLE device...");
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ name: "NiclaBLE" }],
+      optionalServices: [SERVICE_UUID]
+    })
+
+    const server = await device.gatt.connect()
+    console.log("Connected to device !")
+
+    const service = await server.getPrimaryService(SERVICE_UUID)
+    const characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID)
+    console.log(service);
+    console.log(characteristic);
+
+    connected.value = true
+
+    // Écoute des notifications BLE
+    await characteristic.startNotifications()
+    characteristic.addEventListener('characteristicvaluechanged', (event) => {
+      const value = event.target.value
+      const x = value.getFloat32(0, true)
+      const y = value.getFloat32(4, true)
+      const z = value.getFloat32(8, true)
+      accel.value = { x, y, z }
+      console.log(`Accel: X=${x.toFixed(2)}, Y=${y.toFixed(2)}, Z=${z.toFixed(2)}`)
+    })
+
+  } catch (error) {
+    console.error("BLE connection error:", error)
+  }
+}
+</script> 
