@@ -52,18 +52,16 @@ File myFile;
 float Time, DeltaTime;
 float LaccX, LaccY, LaccZ;
 float Xorientation, Yorientation, Zorientation, Worientation;
-float GyroX, GyroY, GyroZ;
 float vX = 0, vY = 0, vZ = 0;      // Velocity components
-float dx = 0, dy = 0, dz = 0;      // Displacement components
+float dX = 0, dY = 0, dZ = 0;      // Displacement components
 float Gx = 0.0, Gy = 0.0, Gz = 0.0;
-float prevGx = 0.0, prevGy = 0.0, prevGz = 0.0;
-float Magx, Magy, Magz;
-float filtered_ax = 0.0, filtered_ay = 0.0, filtered_az = 0.0;
+float GxO = 0.0, GyO = 0.0, GzO = 0.0;
+float x_filtered = 0.0, y_filtered = 0.0, z_filtered = 0.0;
 int Pnum = 0;
 float ScaleFactor = 4096.0;
 
 // Filtering parameters
-const float alphaFilter = 0.4;     // Low-pass filter coefficient
+const float alphaFilter = 1;     // Low-pass filter coefficient
 
 // Parameters for still detection
 const float accMagnitudeRef = 1.0;            // reference acceleration magnitude when device is still
@@ -76,6 +74,13 @@ const float alpha_deriv = 0.3;                // smoothing factor for derivative
 float emaAccMag = 1.0;       // EMA of acceleration magnitude
 float emaDeriv = 0.0;        // EMA of derivative
 float prevAccMag = 1.0;      // previous acceleration magnitude
+
+// Parameters for testing
+float r = 1.0;           // rayon de la spirale
+float PosZ = -2.0;          // position Z initiale
+float dPosZ = 0.01;         // incrément Z à chaque point
+float theta = 0.0;       // angle initial
+float dtheta = 0.1;      // incrément d'angle
 
 //###SETUP_setup loop
 void setup() {
@@ -96,30 +101,10 @@ void setup() {
   nicla::leds.setColor(green);
 }
 
-//###MAINL_Main loop
-void loop() {
-  BHY2.update();            // Update sensor readings
-  nicla::leds.setColor(green);
-  float x, y, z;
-  
-  processSensors(&x, &y, &z);
-  
-  Serial.print(x); Serial.print(" ");
-  Serial.print(y); Serial.print(" ");
-  Serial.println(z);
-
-  delay(10);
-}
-
-void quatMultiply(const float q1[4], const float q2[4], float result[4]) {
-  result[0] = q1[0]*q2[0] - q1[1]*q2[1] - q1[2]*q2[2] - q1[3]*q2[3];
-  result[1] = q1[0]*q2[1] + q1[1]*q2[0] + q1[2]*q2[3] - q1[3]*q2[2];
-  result[2] = q1[0]*q2[2] - q1[1]*q2[3] + q1[2]*q2[0] + q1[3]*q2[1];
-  result[3] = q1[0]*q2[3] + q1[1]*q2[2] - q1[2]*q2[1] + q1[3]*q2[0];
-}
-
 void processSensors(float* outX, float* outY, float* outZ) {
-    // Calculate timing
+  BHY2.update();            // Update sensor readings
+  
+  // Calculate timing
   unsigned long currentTime = millis();
   Time = currentTime / 1000.0; // Time in seconds
   DeltaTime = (currentTime - prevTime) / 1000.0; // Delta time in seconds
@@ -131,16 +116,17 @@ void processSensors(float* outX, float* outY, float* outZ) {
   if (norm > 0) {
     qw /= norm; qx /= norm; qy /= norm; qz /= norm;
   }
+  Xorientation = qx; Yorientation = qy; Zorientation = qz; Worientation = qw;
 
   // Linear acceleration
   float ax = accelerometer.x() * 1 / ScaleFactor;
   float ay = accelerometer.y() * 1 / ScaleFactor;
   float az = accelerometer.z() * 1 / ScaleFactor;
 
-  // Apply low-pass filter
-  filtered_ax = alphaFilter * ax + (1 - alphaFilter) * filtered_ax;
-  filtered_ay = alphaFilter * ay + (1 - alphaFilter) * filtered_ay;
-  filtered_az = alphaFilter * az + (1 - alphaFilter) * filtered_az;
+  // // Apply low-pass filter
+  // x_filtered = alphaFilter * ax + (1 - alphaFilter) * x_filtered;
+  // y_filtered = alphaFilter * ay + (1 - alphaFilter) * y_filtered;
+  // z_filtered = alphaFilter * az + (1 - alphaFilter) * z_filtered;
   
   // Compute acceleration magnitude and its derivative 
   float accMagnitude = sqrt(ax * ax + ay * ay + az * az);
@@ -151,52 +137,42 @@ void processSensors(float* outX, float* outY, float* outZ) {
   emaDeriv = alpha_deriv * deriv + (1 - alpha_deriv) * emaDeriv;
 
   //--- Quaternion-Based Rotation ---
-  float quat_vec[4] = {qw, qx, qy, qz};
-  float conj_quat_vec[4] = {qw, -qx, -qy, -qz};
-  float acc_vec[4] = {0, filtered_ax, filtered_ay, filtered_az};
+  float q_conjugate_x = -qx, q_conjugate_y = -qy, q_conjugate_z = -qz, q_conjugate_w = qw;
 
   // First quaternion multiplication
-  float quat_multi_1[4];
-  quatMultiply(conj_quat_vec, acc_vec, quat_multi_1);
+  float qv0 = qw * 0 - qx * ax - qy * ay - qz * az;
+  float qv1 = qw * ax + qy * az - qz * ay;
+  float qv2 = qw * ay + qz * ax - qx * az;
+  float qv3 = qw * az + qx * ay - qy * ax;
 
   // Second quaternion multiplication
-  float quat_multi_2[4];
-  quatMultiply(quat_multi_1, quat_vec, quat_multi_2);
-
-  // *9.81 convert g to m/s2
-  // -9.81 pour elever la force gravitationnelle
-  Gx = quat_multi_2[1]*9.81;
-  Gy = quat_multi_2[2]*9.81;
-  Gz = quat_multi_2[3]*9.81 - 9.81;
+  Gx = qv0 * q_conjugate_x + qv1 * q_conjugate_w + qv2 * q_conjugate_z - qv3 * q_conjugate_y;
+  Gy = qv0 * q_conjugate_y - qv1 * q_conjugate_z + qv2 * q_conjugate_w + qv3 * q_conjugate_x;
+  Gz = qv0 * q_conjugate_z + qv1 * q_conjugate_y - qv2 * q_conjugate_x + qv3 * q_conjugate_w;
 
   // Update velocities using trapezoidal integration
-  vX += ((prevGx + Gx) / 2.0) * DeltaTime;
-  vY += ((prevGy + Gy) / 2.0) * DeltaTime;
-  vZ += ((prevGz + Gz) / 2.0) * DeltaTime;
+  vX += ((GxO + Gx) / 2.0) * DeltaTime;
+  vY += ((GyO + Gy) / 2.0) * DeltaTime;
+  vZ += ((GzO + Gz) / 2.0) * DeltaTime;
 
   // Check if device is still
   bool near_ref = fabs(emaAccMag - accMagnitudeRef) < accMagnitudeTolerance;
   bool slow = fabs(emaDeriv) < derivAccMagnitudeTolerance;
-  bool isReset = false;
+  // bool isReset = false;
 
   //Set integrated variable to 0 when the device is still
   if (near_ref && slow) {
     // Reset velocities
     vX = vY = vZ = 0.0;
-    isReset = true;
+    // isReset = true;
     
   }
   // Serial.print(isReset); Serial.print(" ");
 
   // Update displacements
-  dx += vX * DeltaTime;
-  dy += vY * DeltaTime;
-  dz += vZ * DeltaTime;
- 
-  //
-  prevGx = Gx;
-  prevGy = Gy;
-  prevGz = Gz;
+  dX += vX * DeltaTime;
+  dY += vY * DeltaTime;
+  dZ += vZ * DeltaTime;
 
   // Affichage des valeurs
   // Serial.print(qx); Serial.print(" ");
@@ -210,11 +186,36 @@ void processSensors(float* outX, float* outY, float* outZ) {
 
   // Serial.print(vX); Serial.print(" ");
   // Serial.print(vY); Serial.print(" ");
-  // Serial.println(vY); 
-  // Serial.print(" ");
+  // Serial.print(vY); Serial.print(" ");
   // Serial.println(accMagnitude);
 
-  *outX = Gx;
-  *outY = Gy;
-  *outZ = Gz;
+  // Serial.print(dX); Serial.print(" ");
+  // Serial.print(dY); Serial.print(" ");
+  // Serial.println(dZ);
+
+  // Simulating real time pts
+  float PosX = r * sin(theta);
+  float PosY = r * cos(theta);
+
+  *outX = PosX;
+  *outY = PosY;
+  *outZ = PosZ;
+
+  // incrémente theta et z pour le prochain point
+  theta += dtheta;
+  PosZ += dPosZ;
+}
+
+//###MAINL_Main loop
+void loop() {
+  nicla::leds.setColor(green);
+  float x, y, z;
+  processSensors(&x, &y, &z);
+
+  // envoie x, y, z séparés par un espace
+  Serial.print(x, 4); Serial.print(" ");
+  Serial.print(y, 4); Serial.print(" ");
+  Serial.println(z, 4);
+
+  delay(10);
 }

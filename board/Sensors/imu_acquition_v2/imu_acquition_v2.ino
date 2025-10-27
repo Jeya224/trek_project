@@ -58,12 +58,15 @@ float dx = 0, dy = 0, dz = 0;      // Displacement components
 float Gx = 0.0, Gy = 0.0, Gz = 0.0;
 float prevGx = 0.0, prevGy = 0.0, prevGz = 0.0;
 float Magx, Magy, Magz;
-float filtered_ax = 0.0, filtered_ay = 0.0, filtered_az = 0.0;
+float x_filtered = 0.0, y_filtered = 0.0, z_filtered = 0.0;
 int Pnum = 0;
 float ScaleFactor = 4096.0;
 
+float prev_ax = 0.0, prev_ay = 0.0, prev_az = 0.0;
+float prev_vx = 0.0, prev_vy = 0.0, prev_vz = 0.0;
+
 // Filtering parameters
-const float alphaFilter = 0.4;     // Low-pass filter coefficient
+const float alphaFilter = 1;     // Low-pass filter coefficient
 
 // Parameters for still detection
 const float accMagnitudeRef = 1.0;            // reference acceleration magnitude when device is still
@@ -103,19 +106,12 @@ void loop() {
   float x, y, z;
   
   processSensors(&x, &y, &z);
-  
+
   Serial.print(x); Serial.print(" ");
   Serial.print(y); Serial.print(" ");
   Serial.println(z);
 
   delay(10);
-}
-
-void quatMultiply(const float q1[4], const float q2[4], float result[4]) {
-  result[0] = q1[0]*q2[0] - q1[1]*q2[1] - q1[2]*q2[2] - q1[3]*q2[3];
-  result[1] = q1[0]*q2[1] + q1[1]*q2[0] + q1[2]*q2[3] - q1[3]*q2[2];
-  result[2] = q1[0]*q2[2] - q1[1]*q2[3] + q1[2]*q2[0] + q1[3]*q2[1];
-  result[3] = q1[0]*q2[3] + q1[1]*q2[2] - q1[2]*q2[1] + q1[3]*q2[0];
 }
 
 void processSensors(float* outX, float* outY, float* outZ) {
@@ -125,22 +121,10 @@ void processSensors(float* outX, float* outY, float* outZ) {
   DeltaTime = (currentTime - prevTime) / 1000.0; // Delta time in seconds
   prevTime = currentTime;
 
-  // Quaternion normalization
-  float qw = quaternion.w(), qx = quaternion.x(), qy = quaternion.y(), qz = quaternion.z();
-  float norm = sqrt(qw * qw + qx * qx + qy * qy + qz * qz);
-  if (norm > 0) {
-    qw /= norm; qx /= norm; qy /= norm; qz /= norm;
-  }
-
   // Linear acceleration
   float ax = accelerometer.x() * 1 / ScaleFactor;
   float ay = accelerometer.y() * 1 / ScaleFactor;
   float az = accelerometer.z() * 1 / ScaleFactor;
-
-  // Apply low-pass filter
-  filtered_ax = alphaFilter * ax + (1 - alphaFilter) * filtered_ax;
-  filtered_ay = alphaFilter * ay + (1 - alphaFilter) * filtered_ay;
-  filtered_az = alphaFilter * az + (1 - alphaFilter) * filtered_az;
   
   // Compute acceleration magnitude and its derivative 
   float accMagnitude = sqrt(ax * ax + ay * ay + az * az);
@@ -150,29 +134,24 @@ void processSensors(float* outX, float* outY, float* outZ) {
   emaAccMag = alpha * accMagnitude + (1 - alpha) * emaAccMag;
   emaDeriv = alpha_deriv * deriv + (1 - alpha_deriv) * emaDeriv;
 
-  //--- Quaternion-Based Rotation ---
-  float quat_vec[4] = {qw, qx, qy, qz};
-  float conj_quat_vec[4] = {qw, -qx, -qy, -qz};
-  float acc_vec[4] = {0, filtered_ax, filtered_ay, filtered_az};
+  // intégration trapézoïdale pour vitesse
+  vX += 0.5 * (ax + prev_ax) * DeltaTime;
+  vY += 0.5 * (ay + prev_ay) * DeltaTime;
+  vZ += 0.5 * (az + prev_az) * DeltaTime;
 
-  // First quaternion multiplication
-  float quat_multi_1[4];
-  quatMultiply(conj_quat_vec, acc_vec, quat_multi_1);
+  // intégration trapézoïdale pour position
+  dx += 0.5 * (vX + prev_vx) * DeltaTime;
+  dy += 0.5 * (vY + prev_vy) * DeltaTime;
+  dz += 0.5 * (vZ + prev_vz) * DeltaTime;
+  
+  // mémoriser anciennes valeurs
+  prev_ax = ax;
+  prev_ay = ay;
+  prev_az = az;
 
-  // Second quaternion multiplication
-  float quat_multi_2[4];
-  quatMultiply(quat_multi_1, quat_vec, quat_multi_2);
-
-  // *9.81 convert g to m/s2
-  // -9.81 pour elever la force gravitationnelle
-  Gx = quat_multi_2[1]*9.81;
-  Gy = quat_multi_2[2]*9.81;
-  Gz = quat_multi_2[3]*9.81 - 9.81;
-
-  // Update velocities using trapezoidal integration
-  vX += ((prevGx + Gx) / 2.0) * DeltaTime;
-  vY += ((prevGy + Gy) / 2.0) * DeltaTime;
-  vZ += ((prevGz + Gz) / 2.0) * DeltaTime;
+  prev_vx = vX;
+  prev_vy = vY;
+  prev_vz = vZ;
 
   // Check if device is still
   bool near_ref = fabs(emaAccMag - accMagnitudeRef) < accMagnitudeTolerance;
@@ -188,33 +167,7 @@ void processSensors(float* outX, float* outY, float* outZ) {
   }
   // Serial.print(isReset); Serial.print(" ");
 
-  // Update displacements
-  dx += vX * DeltaTime;
-  dy += vY * DeltaTime;
-  dz += vZ * DeltaTime;
- 
-  //
-  prevGx = Gx;
-  prevGy = Gy;
-  prevGz = Gz;
-
-  // Affichage des valeurs
-  // Serial.print(qx); Serial.print(" ");
-  // Serial.print(qy); Serial.print(" ");
-  // Serial.print(qz); Serial.print(" ");
-  // Serial.println(qw);
-
-  // Serial.print(near_ref-1.1); Serial.print(" ");
-  // Serial.print(slow-2.2); Serial.print(" ");
-  // Serial.println(accMagnitude);
-
-  // Serial.print(vX); Serial.print(" ");
-  // Serial.print(vY); Serial.print(" ");
-  // Serial.println(vY); 
-  // Serial.print(" ");
-  // Serial.println(accMagnitude);
-
-  *outX = Gx;
-  *outY = Gy;
-  *outZ = Gz;
+  *outX = ax;
+  *outY = ay;
+  *outZ = az;
 }
