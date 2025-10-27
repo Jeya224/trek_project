@@ -39,6 +39,12 @@ void loop() {
       uint8_t data[12];
       memcpy(data, &x, 4);
       memcpy(data + 4, &y, 4);
+      memcpy(data + 8, &z, 4);at x, y, z;
+      NiclaIMU.readAccelerometer(x, y, z);
+
+      uint8_t data[12];
+      memcpy(data, &x, 4);
+      memcpy(data + 4, &y, 4);
       memcpy(data + 8, &z, 4);
 
       imuCharacteristic.writeValue(data, 12);
