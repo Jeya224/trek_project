@@ -194,9 +194,9 @@ void loop() {
   // Serial.print(y+0.05);     Serial.print(" ");
   // Serial.println(z-1);
 
-  Serial.print(dX); Serial.print(" ");
-  Serial.print(dY); Serial.print(" ");
-  Serial.println(dZ);
+  Serial.print(x); Serial.print(" ");
+  Serial.print(y); Serial.print(" ");
+  Serial.println(z);
 
   delay(10);
 }
