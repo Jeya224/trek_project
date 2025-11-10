@@ -2,5 +2,6 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
-  modules: ['@nuxtjs/google-fonts', 'nuxt-svgo']
+  modules: ['@nuxtjs/google-fonts', 'nuxt-svgo'],
+  css:['~/assets/css/main.css']
 })
