@@ -1,27 +1,3 @@
-/*
-Readme:
-Code version: 1
-Code editor: Jeya
-Organisation: OSLOMET
-Group 1 EPS
-
-This section describes the code layout and functions
-
-Comments about sections will follow the following format:
-//###CODENAME_what the section does
-
-This is the code layout:
-//###LIB_Libraries inclusion
-//###SD_Definitions
-//###SENID_DefineSensorID
-//###VARINIT_Variables initialisation
-//###FILTPARA_ Filtering parameters
-//###SETUP_setup loop
-//###WBUF_Write to buffer function
-//###FBUF_Flush buffer function
-//###MAINL_Main loop
-*/
-
 //###LIB_Libraries inclusion
 #include "Nicla_System.h"    // Requirement for NICLA Sense ME
 #include "Arduino_BHY2.h"    // Requirement for the Bosch sensor
