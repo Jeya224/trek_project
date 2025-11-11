@@ -42,10 +42,10 @@ void loop() {
     Serial.println(central.address());
     
     while (central.connected()) {
-      float x, y, z;
-      x = accel.x() ;
-      y = accel.y() ;
-      z = accel.z() ;
+      float x = accel.x() / 1000 * 10; // amplification 10x juste pour voir le graphe
+      float y = accel.y() / 1000 * 10;
+      float z = accel.z() / 1000 * 10;
+
 
       Serial.print("acc_X:");
       Serial.print(accel.x());
