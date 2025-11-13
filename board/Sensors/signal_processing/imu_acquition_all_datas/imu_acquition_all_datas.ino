@@ -66,6 +66,7 @@ void loop() {
   float lin_ay = linearAcc.y() * accScale;
   float lin_az = linearAcc.z() * accScale;
 
+
   Serial.print(DeltaTime); Serial.print(" ");
   Serial.print(ax); Serial.print(" ");
   Serial.print(ay); Serial.print(" ");
